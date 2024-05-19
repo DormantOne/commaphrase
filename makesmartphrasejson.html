@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Form to JSON Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .form-field {
+            margin: 10px 0;
+        }
+        .form-field label {
+            display: block;
+            font-weight: bold;
+        }
+        .readonly-input {
+            background-color: #f0f0f0;
+        }
+        .icd-display-options, .other-data, .calculations, .conditional-results {
+            margin-top: 20px;
+        }
+        .instructions {
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Dynamic Form to JSON Generator</h1>
+    <div id="form-container">
+        <div class="form-field">
+            <label for="diagnosis">Diagnosis:</label>
+            <input type="text" id="diagnosis">
+            <button id="diagnosis-lookup">Lookup ICD-10 Codes</button>
+        </div>
+        <div id="diagnosis-icd-codes"></div>
+        <div class="form-field">
+            <label for="phrase">Smart Phrase:</label>
+            <input type="text" id="phrase">
+        </div>
+        <div id="icd-code-fields">
+            <div class="form-field">
+                <label>ICD-10 Codes:</label>
+                <input type="text" class="icd-code">
+                <button class="remove-field" style="display:none;">Remove</button>
+            </div>
+        </div>
+        <div class="form-field icd-display-options">
+            <label>ICD-10 Code Display Option:</label>
+            <input type="radio" name="icd-display" value="list-all" checked> List All<br>
+            <input type="radio" name="icd-display" value="list-as-selector"> List as Selector<br>
+            <input type="radio" name="icd-display" value="list-as-checkbox"> List as Checkbox
+        </div>
+        <button id="add-icd-field">Add ICD-10 Code</button>
+        <div id="lab-fields">
+            <div class="form-field">
+                <label>Lab/Study Name:</label>
+                <input type="text" class="lab-name">
+                <button class="remove-field" style="display:none;">Remove</button>
+            </div>
+        </div>
+        <button id="add-lab-field">Add Lab/Study Name</button>
+        <div id="other-data-fields">
+            <div class="form-field other-data">
+                <label>Other Data - Description:</label>
+                <input type="text" class="description">
+                <label>Other Data - Options:</label>
+                <input type="text" class="options" placeholder='e.g. "option1, option2, option3" or "free text"'>
+                <div class="instructions">Provide comma-separated options or type "free text". Example: "option1, option2, option3" or "free text"</div>
+                <button class="remove-field">Remove</button>
+            </div>
+        </div>
+        <button id="add-other-data-field">Add Other Data Field</button>
+        <div id="calculation-fields">
+            <div class="form-field calculations">
+                <label>Calculation Name:</label>
+                <input type="text" class="calculation-name">
+                <label>Calculation Structure (e.g., A + B * C):</label>
+                <input type="text" class="calculation-structure">
+                <div class="instructions">Use letters corresponding to lab/study names and other data sections from the generated JSON. Logical operators: AND = &&, OR = ||, NOT = !</div>
+                <button class="remove-field">Remove</button>
+            </div>
+        </div>
+        <button id="add-calculation-field">Add Calculation Field</button>
+        <div id="conditional-results-fields">
+            <div class="form-field conditional-results">
+                <label>Condition (e.g., EF > 50):</label>
+                <input type="text" class="condition">
+                <label>Result:</label>
+                <input type="text" class="result">
+                <label>Education:</label>
+                <input type="text" class="education">
+                <button class="remove-field">Remove</button>
+            </div>
+        </div>
+        <button id="add-conditional-result-field">Add Conditional Result Field</button>
+    </div>
+    <button id="generate-json">Generate JSON</button>
+    <pre id="json-output"></pre>
+
+    <script>
+        const icdApiUrl = 'https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search';
+
+        let globalLetterCounter = 0;
+        let labLetterCounter = 0;
+        let optionLetterCounter = 0;
+
+        const nextLetter = () => String.fromCharCode(65 + globalLetterCounter++);
+        const resetCounters = () => {
+            globalLetterCounter = 0;
+            labLetterCounter = 0;
+            optionLetterCounter = 0;
+        };
+
+        document.getElementById('diagnosis-lookup').addEventListener('click', async function() {
+            const diagnosisInput = document.getElementById('diagnosis').value;
+            const diagnosisICDCodesContainer = document.getElementById('diagnosis-icd-codes');
+            diagnosisICDCodesContainer.innerHTML = ''; // Clear previous results
+
+            // Fetch ICD-10 codes based on diagnosis
+            const response = await fetch(`${icdApiUrl}?sf=code,name&terms=${diagnosisInput}`);
+            const data = await response.json();
+            const results = data[3];
+
+            if (results.length > 0) {
+                results.forEach(result => {
+                    const codeElement = document.createElement('div');
+                    codeElement.textContent = `${result[0]} - ${result[1]}`;
+                    diagnosisICDCodesContainer.appendChild(codeElement);
+                });
+            } else {
+                diagnosisICDCodesContainer.textContent = 'No ICD-10 codes found for the given diagnosis.';
+            }
+        });
+
+        document.getElementById('add-icd-field').addEventListener('click', function() {
+            const icdCodeFields = document.getElementById('icd-code-fields');
+            const newField = document.createElement('div');
+            newField.className = 'form-field';
+            newField.innerHTML = `
+                <label>ICD-10 Codes:</label>
+                <input type="text" class="icd-code">
+                <button class="remove-field">Remove</button>
+            `;
+            icdCodeFields.appendChild(newField);
+
+            newField.querySelector('.remove-field').addEventListener('click', function() {
+                icdCodeFields.removeChild(newField);
+            });
+        });
+
+        document.getElementById('add-lab-field').addEventListener('click', function() {
+            const labFields = document.getElementById('lab-fields');
+            const newField = document.createElement('div');
+            newField.className = 'form-field';
+            newField.innerHTML = `
+                <label>Lab/Study Name:</label>
+                <input type="text" class="lab-name">
+                <button class="remove-field">Remove</button>
+            `;
+            labFields.appendChild(newField);
+
+            newField.querySelector('.remove-field').addEventListener('click', function() {
+                labFields.removeChild(newField);
+                labLetterCounter--; // Adjust counter if a field is removed
+            });
+        });
+
+        document.getElementById('add-other-data-field').addEventListener('click', function() {
+            const otherDataFields = document.getElementById('other-data-fields');
+            const newField = document.createElement('div');
+            newField.className = 'form-field other-data';
+            newField.innerHTML = `
+                <label>Other Data - Description:</label>
+                <input type="text" class="description">
+                <label>Other Data - Options:</label>
+                <input type="text" class="options" placeholder='e.g. "option1, option2, option3" or "free text"'>
+                <div class="instructions">Provide comma-separated options or type "free text". Example: "option1, option2, option3" or "free text"</div>
+                <button class="remove-field">Remove</button>
+            `;
+            otherDataFields.appendChild(newField);
+
+            newField.querySelector('.remove-field').addEventListener('click', function() {
+                otherDataFields.removeChild(newField);
+                optionLetterCounter--; // Adjust counter if a field is removed
+            });
+        });
+
+        document.getElementById('add-calculation-field').addEventListener('click', function() {
+            const calculationFields = document.getElementById('calculation-fields');
+            const newField = document.createElement('div');
+            newField.className = 'form-field calculations';
+            newField.innerHTML = `
+                <label>Calculation Name:</label>
+                <input type="text" class="calculation-name">
+                <label>Calculation Structure (e.g., A + B * C):</label>
+                <input type="text" class="calculation-structure">
+                <div class="instructions">Use letters corresponding to lab/study names and other data sections from the generated JSON. Logical operators: AND = &&, OR = ||, NOT = !</div>
+                <button class="remove-field">Remove</button>
+            `;
+            calculationFields.appendChild(newField);
+
+            newField.querySelector('.remove-field').addEventListener('click', function() {
+                calculationFields.removeChild(newField);
+            });
+        });
+
+        document.getElementById('add-conditional-result-field').addEventListener('click', function() {
+            const conditionalResultsFields = document.getElementById('conditional-results-fields');
+            const newField = document.createElement('div');
+            newField.className = 'form-field conditional-results';
+            newField.innerHTML = `
+                <label>Condition (e.g., EF > 50):</label>
+                <input type="text" class="condition">
+                <label>Result:</label>
+                <input type="text" class="result">
+                <label>Education:</label>
+                <input type="text" class="education">
+                <button class="remove-field">Remove</button>
+            `;
+            conditionalResultsFields.appendChild(newField);
+
+            newField.querySelector('.remove-field').addEventListener('click', function() {
+                conditionalResultsFields.removeChild(newField);
+            });
+        });
+
+        document.getElementById('generate-json').addEventListener('click', function() {
+            const diagnosis = document.getElementById('diagnosis').value;
+            const phrase = document.getElementById('phrase').value;
+
+            resetCounters(); // Reset letter counters to ensure consistency
+
+            const icdCodes = [];
+            document.querySelectorAll('.icd-code').forEach(input => {
+                icdCodes.push(input.value);
+            });
+
+            const labNames = [];
+            document.querySelectorAll('.lab-name').forEach((input) => {
+                labNames.push({ name: input.value, letter: nextLetter() });
+            });
+
+            const icdDisplayOption = document.querySelector('input[name="icd-display"]:checked').value;
+
+            const otherData = [];
+            document.querySelectorAll('#other-data-fields .other-data').forEach(field => {
+                const description = field.querySelector('.description').value;
+                const optionsInput = field.querySelector('.options').value.trim().toLowerCase();
+
+                let options;
+                if (optionsInput === 'free text') {
+                    options = 'free text';
+                } else {
+                    options = optionsInput.split(',').map(option => ({ name: option.trim(), letter: nextLetter() }));
+                }
+
+                otherData.push({ description, options });
+            });
+
+            const calculations = [];
+            document.querySelectorAll('#calculation-fields .calculations').forEach(field => {
+                const calculationName = field.querySelector('.calculation-name').value;
+                const calculationStructure = field.querySelector('.calculation-structure').value;
+
+                try {
+                    // Validate calculation structure syntax
+                    const valid = calculationStructure.match(/^[A-Z0-9\s\+\-\*\/\(\)\&\|\!]+$/);
+                    if (!valid) {
+                        throw new Error(`Invalid calculation structure: ${calculationStructure}`);
+                    }
+                    calculations.push({ name: calculationName, structure: calculationStructure });
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+
+            const conditionalResults = [];
+            document.querySelectorAll('#conditional-results-fields .conditional-results').forEach(field => {
+                const condition = field.querySelector('.condition').value;
+                const result = field.querySelector('.result').value;
+                const education = field.querySelector('.education').value;
+
+                conditionalResults.push({ condition, result, education });
+            });
+
+            const jsonData = {
+                diagnosis,
+                phrase,
+                icdCodes: {
+                    codes: icdCodes,
+                    displayOption: icdDisplayOption
+                },
+                labNames,
+                otherData,
+                calculations,
+                conditionalResults
+            };
+
+            document.getElementById('json-output').textContent = JSON.stringify(jsonData, null, 2);
+            alert("JSON generated. Use the letters from the JSON for calculations.");
+        });
+    </script>
+</body>
+</html>
