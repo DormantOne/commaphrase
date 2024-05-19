@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic JSON Form Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #json-input {
+            width: 100%;
+            height: 200px;
+        }
+        #generate-form {
+            margin: 10px 0;
+        }
+        .form-field {
+            margin: 10px 0;
+        }
+        .form-field label {
+            display: block;
+            font-weight: bold;
+        }
+        .readonly-input {
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Dynamic JSON Form Generator</h1>
+    <textarea id="json-input" placeholder="Paste your JSON here..."></textarea>
+    <button id="generate-form">Generate Form</button>
+    <div id="form-container"></div>
+    <div id="results-container"></div>
+
+    <script>
+        document.getElementById('generate-form').addEventListener('click', function() {
+            const jsonInput = document.getElementById('json-input').value;
+            const formContainer = document.getElementById('form-container');
+            const resultsContainer = document.getElementById('results-container');
+            formContainer.innerHTML = '';
+            resultsContainer.innerHTML = '';
+
+            try {
+                const jsonData = JSON.parse(jsonInput);
+                const formFields = {};
+
+                // Diagnosis
+                const diagnosisField = document.createElement('div');
+                diagnosisField.className = 'form-field';
+                diagnosisField.innerHTML = `
+                    <label>Diagnosis</label>
+                    <input type="text" value="${jsonData.diagnosis}" readonly class="readonly-input">
+                `;
+                formContainer.appendChild(diagnosisField);
+
+                // Smart Phrase
+                const phraseField = document.createElement('div');
+                phraseField.className = 'form-field';
+                phraseField.innerHTML = `
+                    <label>Smart Phrase</label>
+                    <input type="text" value="${jsonData.phrase}" readonly class="readonly-input">
+                `;
+                formContainer.appendChild(phraseField);
+
+                // ICD-10 Codes
+                const icdField = document.createElement('div');
+                icdField.className = 'form-field';
+                icdField.innerHTML = `<label>ICD-10 Codes</label>`;
+                const icdInput = document.createElement(jsonData.icdCodes.displayOption === 'list-as-selector' ? 'select' : 'div');
+                if (jsonData.icdCodes.displayOption === 'list-as-selector') {
+                    jsonData.icdCodes.codes.forEach(code => {
+                        const option = document.createElement('option');
+                        option.value = code;
+                        option.textContent = code;
+                        icdInput.appendChild(option);
+                    });
+                } else {
+                    jsonData.icdCodes.codes.forEach(code => {
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.value = code;
+                        const label = document.createElement('label');
+                        label.textContent = code;
+                        icdInput.appendChild(checkbox);
+                        icdInput.appendChild(label);
+                        icdInput.appendChild(document.createElement('br'));
+                    });
+                }
+                icdField.appendChild(icdInput);
+                formContainer.appendChild(icdField);
+
+                // Lab/Study Names
+                jsonData.labNames.forEach(lab => {
+                    const labField = document.createElement('div');
+                    labField.className = 'form-field';
+                    labField.innerHTML = `
+                        <label>${lab.name} (${lab.letter})</label>
+                        <input type="text" id="${lab.letter}">
+                    `;
+                    formContainer.appendChild(labField);
+                    formFields[lab.letter] = labField.querySelector('input');
+                });
+
+                // Other Data
+                jsonData.otherData.forEach(data => {
+                    const dataField = document.createElement('div');
+                    dataField.className = 'form-field';
+                    dataField.innerHTML = `<label>${data.description}</label>`;
+                    const dataInput = document.createElement('div');
+                    if (data.options === 'free text') {
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        dataInput.appendChild(input);
+                        formFields[data.description] = input;
+                    } else {
+                        data.options.forEach(option => {
+                            const radio = document.createElement('input');
+                            radio.type = 'radio';
+                            radio.name = data.description;
+                            radio.value = option.letter;
+                            const label = document.createElement('label');
+                            label.textContent = option.name;
+                            dataInput.appendChild(radio);
+                            dataInput.appendChild(label);
+                            dataInput.appendChild(document.createElement('br'));
+                        });
+                    }
+                    dataField.appendChild(dataInput);
+                    formContainer.appendChild(dataField);
+                });
+
+                // Add event listeners to update calculations on change
+                Object.values(formFields).forEach(field => {
+                    field.addEventListener('change', () => updateCalculations(jsonData, formFields, resultsContainer));
+                });
+
+                // Initial calculation update
+                updateCalculations(jsonData, formFields, resultsContainer);
+            } catch (error) {
+                alert('Invalid JSON format. Please check and try again.');
+            }
+        });
+
+        function updateCalculations(jsonData, formFields, resultsContainer) {
+            resultsContainer.innerHTML = '';
+
+            const calculationsTitle = document.createElement('h2');
+            calculationsTitle.textContent = 'Calculations and Education';
+            resultsContainer.appendChild(calculationsTitle);
+
+            const calculate = (structure) => {
+                const expression = structure.replace(/[A-Z]/g, match => formFields[match] ? formFields[match].value : 0);
+                try {
+                    return eval(expression);
+                } catch (error) {
+                    console.error('Calculation error:', error);
+                    return null;
+                }
+            };
+
+            jsonData.calculations.forEach(calc => {
+                const result = calculate(calc.structure);
+                const resultText = document.createElement('p');
+                resultText.textContent = `${calc.name}: ${result}`;
+                resultsContainer.appendChild(resultText);
+            });
+
+            jsonData.conditionalResults.forEach(cond => {
+                const conditionMet = eval(cond.condition.replace(/[A-Z]/g, match => formFields[match] ? formFields[match].value : 0));
+                if (conditionMet) {
+                    const resultText = document.createElement('p');
+                    resultText.textContent = `Result: ${cond.result}`;
+                    resultsContainer.appendChild(resultText);
+
+                    const educationText = document.createElement('p');
+                    educationText.textContent = `Education: ${cond.education}`;
+                    resultsContainer.appendChild(educationText);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
